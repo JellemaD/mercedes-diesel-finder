@@ -1,6 +1,7 @@
 // Global variables
 let allListings = [];
 let currentFilter = 'all';
+let currentSort = { column: null, direction: 'asc' };
 
 // Country flags mapping
 const countryFlags = {
@@ -25,12 +26,37 @@ const countryNames = {
     'AT': 'Oostenrijk'
 };
 
+// Detect car type from title/description
+function detectCarType(listing) {
+    const text = ((listing.title || '') + ' ' + (listing.description || '') + ' ' + (listing.model || '')).toLowerCase();
+
+    // Station wagon / Combi
+    if (/combi|estate|t-model|t-modell|break|touring|stationwagen|station|wagon|s123|s124|200t|250t|300t|200 t|250 t|300 t|t\s*diesel|td\b/.test(text)) {
+        return 'Station';
+    }
+    // Cabrio / Convertible
+    if (/cabrio|cabriolet|convertible|roadster/.test(text)) {
+        return 'Cabrio';
+    }
+    // Coupe
+    if (/coup[eé]|coupe/.test(text)) {
+        return 'Coupé';
+    }
+    // Limousine / Sedan (default for W123/W124)
+    if (/limousine|sedan|saloon|limo/.test(text)) {
+        return 'Sedan';
+    }
+    // Default
+    return 'Sedan';
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     setCurrentDate();
     loadStatistics();
     loadListings('all');
     setupFilterButtons();
+    setupSortableHeaders();
 });
 
 // Set current date
@@ -111,7 +137,9 @@ function displayListings(listings) {
 
     // Update section title based on filter (before empty check)
     const allSectionTitle = document.querySelector('#all-section h2');
-    if (currentFilter === 'all') {
+    if (currentFilter === 'hot') {
+        allSectionTitle.textContent = '🔥 Hot: Stationwagen + Automaat + Trekhaak';
+    } else if (currentFilter === 'all') {
         allSectionTitle.textContent = 'Mercedes W123/W124 Diesel (Alle landen)';
     } else {
         const flag = countryFlags[currentFilter] || '';
@@ -155,6 +183,15 @@ function createTableRow(listing) {
     modelBadge.textContent = listing.model || 'Onbekend';
     modelCell.appendChild(modelBadge);
     tr.appendChild(modelCell);
+
+    // Type
+    const typeCell = document.createElement('td');
+    const carType = detectCarType(listing);
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `type-badge ${carType.toLowerCase()}`;
+    typeBadge.textContent = carType;
+    typeCell.appendChild(typeBadge);
+    tr.appendChild(typeCell);
 
     // Year
     const yearCell = document.createElement('td');
@@ -255,7 +292,7 @@ function showEmptyState() {
     const tbody = document.getElementById('all-tbody');
     tbody.innerHTML = `
         <tr>
-            <td colspan="7" class="empty-state">
+            <td colspan="8" class="empty-state">
                 <h3>Geen advertenties gevonden</h3>
                 <p>Er zijn momenteel geen advertenties beschikbaar voor de geselecteerde filters.</p>
             </td>
@@ -271,7 +308,7 @@ function showError(message) {
     const tbody = document.getElementById('all-tbody');
     tbody.innerHTML = `
         <tr>
-            <td colspan="7" class="empty-state">
+            <td colspan="8" class="empty-state">
                 <h3>Error</h3>
                 <p>${message}</p>
             </td>
@@ -291,6 +328,14 @@ function setupFilterButtons() {
             // Add active class to clicked button
             this.classList.add('active');
 
+            // Check if Hot filter
+            const filterType = this.getAttribute('data-filter');
+            if (filterType === 'hot') {
+                currentFilter = 'hot';
+                loadHotListings();
+                return;
+            }
+
             // Get country
             const country = this.getAttribute('data-country');
             currentFilter = country;
@@ -301,8 +346,145 @@ function setupFilterButtons() {
     });
 }
 
+// Load Hot listings (stationwagen + automaat + trekhaak)
+async function loadHotListings() {
+    showLoading(true);
+
+    try {
+        // Load all listings first
+        const response = await fetch('/api/listings/top?limit=500');
+        const data = await response.json();
+
+        if (data.success) {
+            // Filter for Hot criteria
+            const hotListings = data.listings.filter(listing => {
+                const text = ((listing.title || '') + ' ' + (listing.description || '') + ' ' + (listing.model || '')).toLowerCase();
+
+                // Check for station wagon (stationwagen/combi/estate/T-model/break/touring)
+                const isStationWagon = /combi|estate|t-model|t-modell|break|touring|stationwagen|station|wagon|s123|s124|200t|250t|300t|200 t|250 t|300 t/.test(text);
+
+                // Check for automatic transmission
+                const isAutomatic = /automaat|automatic|automatik|automatisch|auto\s*matic/.test(text);
+
+                // Check for tow bar
+                const hasTowBar = /trekhaak|anhängerkupplung|ahk|towbar|tow bar|attelage/.test(text);
+
+                return isStationWagon && isAutomatic && hasTowBar;
+            });
+
+            allListings = hotListings;
+
+            // Update section title
+            const allSectionTitle = document.querySelector('#all-section h2');
+            allSectionTitle.textContent = '🔥 Hot: Stationwagen + Automaat + Trekhaak';
+
+            displayListings(hotListings);
+        }
+    } catch (error) {
+        console.error('Error loading hot listings:', error);
+        showError('Er is een fout opgetreden bij het laden van de Hot advertenties.');
+    } finally {
+        showLoading(false);
+    }
+}
+
 // Auto-refresh every 5 minutes
 setInterval(() => {
     loadStatistics();
-    loadListings(currentFilter);
+    if (currentFilter === 'hot') {
+        loadHotListings();
+    } else {
+        loadListings(currentFilter);
+    }
 }, 5 * 60 * 1000);
+
+// Setup sortable headers
+function setupSortableHeaders() {
+    const headers = document.querySelectorAll('#all-table thead th');
+    const columnMap = ['model', 'type', 'year', 'mileage', 'price', 'location', 'source', 'link'];
+
+    headers.forEach((th, index) => {
+        if (columnMap[index] === 'link') return; // Don't sort link column
+
+        th.style.cursor = 'pointer';
+        th.setAttribute('data-column', columnMap[index]);
+        th.addEventListener('click', function() {
+            const column = this.getAttribute('data-column');
+            sortByColumn(column);
+        });
+    });
+}
+
+// Sort by column
+function sortByColumn(column) {
+    // Toggle direction if same column
+    if (currentSort.column === column) {
+        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.column = column;
+        currentSort.direction = 'asc';
+    }
+
+    // Sort the listings
+    const sorted = [...allListings].sort((a, b) => {
+        let valA, valB;
+
+        switch (column) {
+            case 'model':
+                valA = (a.model || '').toLowerCase();
+                valB = (b.model || '').toLowerCase();
+                break;
+            case 'type':
+                valA = detectCarType(a).toLowerCase();
+                valB = detectCarType(b).toLowerCase();
+                break;
+            case 'year':
+                valA = a.year || 0;
+                valB = b.year || 0;
+                break;
+            case 'mileage':
+                valA = a.mileage || 999999999;
+                valB = b.mileage || 999999999;
+                break;
+            case 'price':
+                valA = a.price || 999999999;
+                valB = b.price || 999999999;
+                break;
+            case 'location':
+                valA = (a.location || a.country || '').toLowerCase();
+                valB = (b.location || b.country || '').toLowerCase();
+                break;
+            case 'source':
+                valA = (a.source || '').toLowerCase();
+                valB = (b.source || '').toLowerCase();
+                break;
+            default:
+                return 0;
+        }
+
+        if (valA < valB) return currentSort.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return currentSort.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    // Update header indicators
+    updateSortIndicators();
+
+    // Re-render the table
+    renderTable('all-tbody', sorted);
+}
+
+// Update sort indicators in headers
+function updateSortIndicators() {
+    const headers = document.querySelectorAll('#all-table thead th');
+
+    headers.forEach(th => {
+        const column = th.getAttribute('data-column');
+        // Remove existing indicators
+        th.textContent = th.textContent.replace(/ ▲| ▼/g, '');
+
+        if (column === currentSort.column) {
+            th.textContent += currentSort.direction === 'asc' ? ' ▲' : ' ▼';
+        }
+    });
+}

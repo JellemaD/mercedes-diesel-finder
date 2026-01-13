@@ -156,9 +156,22 @@ function displayListings(listings) {
         return;
     }
 
+    // Sort by date_added (newest first) by default
+    allListings = [...listings].sort((a, b) => {
+        const dateA = a.date_added ? new Date(a.date_added).getTime() : 0;
+        const dateB = b.date_added ? new Date(b.date_added).getTime() : 0;
+        return dateB - dateA; // Descending (newest first)
+    });
+
+    // Set initial sort state
+    currentSort = { column: 'date_added', direction: 'desc' };
+
     // Always use all-section for displaying listings
     document.getElementById('all-section').classList.remove('hidden');
-    renderTable('all-tbody', listings);
+    renderTable('all-tbody', allListings);
+
+    // Update sort indicators
+    updateSortIndicators();
 }
 
 // Render table
@@ -255,6 +268,26 @@ function createTableRow(listing) {
     sourceCell.textContent = listing.source || 'Onbekend';
     tr.appendChild(sourceCell);
 
+    // Date Added
+    const dateCell = document.createElement('td');
+    if (listing.date_added) {
+        try {
+            const date = new Date(listing.date_added);
+            const dateStr = date.toLocaleDateString('nl-NL', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+            dateCell.textContent = dateStr;
+            dateCell.className = 'date-cell';
+        } catch (e) {
+            dateCell.textContent = '-';
+        }
+    } else {
+        dateCell.textContent = '-';
+    }
+    tr.appendChild(dateCell);
+
     // Link
     const linkCell = document.createElement('td');
     const link = document.createElement('a');
@@ -292,7 +325,7 @@ function showEmptyState() {
     const tbody = document.getElementById('all-tbody');
     tbody.innerHTML = `
         <tr>
-            <td colspan="8" class="empty-state">
+            <td colspan="9" class="empty-state">
                 <h3>Geen advertenties gevonden</h3>
                 <p>Er zijn momenteel geen advertenties beschikbaar voor de geselecteerde filters.</p>
             </td>
@@ -308,7 +341,7 @@ function showError(message) {
     const tbody = document.getElementById('all-tbody');
     tbody.innerHTML = `
         <tr>
-            <td colspan="8" class="empty-state">
+            <td colspan="9" class="empty-state">
                 <h3>Error</h3>
                 <p>${message}</p>
             </td>
@@ -401,7 +434,7 @@ setInterval(() => {
 // Setup sortable headers
 function setupSortableHeaders() {
     const headers = document.querySelectorAll('#all-table thead th');
-    const columnMap = ['model', 'type', 'year', 'mileage', 'price', 'location', 'source', 'link'];
+    const columnMap = ['model', 'type', 'year', 'mileage', 'price', 'location', 'source', 'date_added', 'link'];
 
     headers.forEach((th, index) => {
         if (columnMap[index] === 'link') return; // Don't sort link column
@@ -441,6 +474,10 @@ function sortByColumn(column) {
             case 'year':
                 valA = a.year || 0;
                 valB = b.year || 0;
+                break;
+            case 'date_added':
+                valA = a.date_added ? new Date(a.date_added).getTime() : 0;
+                valB = b.date_added ? new Date(b.date_added).getTime() : 0;
                 break;
             case 'mileage':
                 valA = a.mileage || 999999999;

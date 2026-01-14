@@ -105,7 +105,7 @@ async function loadListings(country = 'all') {
         let url = '/api/listings/top';
 
         if (country !== 'all') {
-            url = `/api/listings?country=${country}&limit=50`;
+            url = `/api/listings?country=${country}&limit=500`;
         }
 
         const response = await fetch(url);

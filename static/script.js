@@ -139,6 +139,8 @@ function displayListings(listings) {
     const allSectionTitle = document.querySelector('#all-section h2');
     if (currentFilter === 'hot') {
         allSectionTitle.textContent = '🔥 Hot: Stationwagen + Automaat + Trekhaak';
+    } else if (currentFilter === '5-6cyl') {
+        allSectionTitle.textContent = '⚙️ 5/6 Cilinder Diesels (1985-1987)';
     } else if (currentFilter === 'all') {
         allSectionTitle.textContent = 'Mercedes W123/W124 Diesel (Alle landen)';
     } else {
@@ -369,6 +371,13 @@ function setupFilterButtons() {
                 return;
             }
 
+            // Check if 5/6 Cylinder filter
+            if (filterType === '5-6cyl') {
+                currentFilter = '5-6cyl';
+                load56CylinderListings();
+                return;
+            }
+
             // Get country
             const country = this.getAttribute('data-country');
             currentFilter = country;
@@ -421,11 +430,57 @@ async function loadHotListings() {
     }
 }
 
+// Load 5/6 Cylinder listings (1985-1987)
+async function load56CylinderListings() {
+    showLoading(true);
+
+    try {
+        // Load all listings first
+        const response = await fetch('/api/listings/top?limit=500');
+        const data = await response.json();
+
+        if (data.success) {
+            // Filter for 5/6 cylinder criteria
+            const filtered = data.listings.filter(listing => {
+                const text = ((listing.title || '') + ' ' + (listing.description || '') + ' ' + (listing.model || '')).toLowerCase();
+                const year = listing.year;
+
+                // Check year range (1985-1987)
+                if (!year || year < 1985 || year > 1987) {
+                    return false;
+                }
+
+                // Check for 5 or 6 cylinder models
+                // W123: 300D/300TD/300CD = 5 cylinder (OM617)
+                // W124: 300D/300TD = 6 cylinder (OM603), 250D/250TD = 5 cylinder (OM602)
+                const is56Cylinder = /300d|300td|300cd|300 d|300 td|300 cd|250d|250td|250 d|250 td|om617|om603|om602|5.*cylinder|6.*cylinder|5.*zylinder|6.*zylinder/.test(text);
+
+                return is56Cylinder;
+            });
+
+            allListings = filtered;
+
+            // Update section title
+            const allSectionTitle = document.querySelector('#all-section h2');
+            allSectionTitle.textContent = '⚙️ 5/6 Cilinder Diesels (1985-1987)';
+
+            displayListings(filtered);
+        }
+    } catch (error) {
+        console.error('Error loading 5/6 cylinder listings:', error);
+        showError('Er is een fout opgetreden bij het laden van de 5/6 cilinder advertenties.');
+    } finally {
+        showLoading(false);
+    }
+}
+
 // Auto-refresh every 5 minutes
 setInterval(() => {
     loadStatistics();
     if (currentFilter === 'hot') {
         loadHotListings();
+    } else if (currentFilter === '5-6cyl') {
+        load56CylinderListings();
     } else {
         loadListings(currentFilter);
     }

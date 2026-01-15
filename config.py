@@ -1,15 +1,16 @@
-# Configuration for Mercedes W123/W124 Diesel Search
+# Configuration for Mercedes 190/200 Series Diesel Search
 
 # Search parameters
-MODELS = ['W123', 'W124']
+MODELS = ['W123', 'W124', 'W201']  # W123 = 200-serie, W124 = 200-serie, W201 = 190-serie
 FUEL_TYPES = ['Diesel']
-YEAR_FROM = 1975
-YEAR_TO = 1996
+YEAR_FROM = 1979
+YEAR_TO = 1986
 
 # Model variants to search for
 MODEL_VARIANTS = {
     'W123': ['200D', '240D', '300D', '300TD', '300D Turbo'],
-    'W124': ['200D', '250D', '250TD', '300D', '300TD', '300D Turbo', '250D Kombi']
+    'W124': ['200D', '250D', '250TD', '300D', '300TD', '300D Turbo', '250D Kombi'],
+    'W201': ['190D', '190D 2.0', '190D 2.5']  # 190-serie diesel variants
 }
 
 # Countries and their marketplace URLs

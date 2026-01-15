@@ -123,15 +123,14 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # Only show oldtimers (40+ years = wegenbelastingvrij)
-        # Max year 1987 for road tax exemption in 2026+
+        # Only show 190/200 series diesels from 1979-1986
         # Price > 500 to filter out parts/junk
-        # Sort by year DESC (newest oldtimers first)
+        # Sort by year DESC (newest first)
         cursor.execute('''
             SELECT * FROM advertisements
             WHERE is_active = 1
             AND external_id NOT LIKE 'search_%'
-            AND (year IS NULL OR year <= 1987)
+            AND (year IS NULL OR (year >= 1979 AND year <= 1986))
             AND (price IS NULL OR price > 500)
             ORDER BY year DESC, date_updated DESC
             LIMIT ?
@@ -148,16 +147,15 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # Only show oldtimers (40+ years = wegenbelastingvrij)
-        # Max year 1987 for road tax exemption in 2026+
+        # Only show 190/200 series diesels from 1979-1986
         # Price > 500 to filter out parts/junk
-        # Sort by year DESC (newest oldtimers first)
+        # Sort by year DESC (newest first)
         cursor.execute('''
             SELECT * FROM advertisements
             WHERE is_active = 1
             AND external_id NOT LIKE 'search_%'
             AND country = ?
-            AND (year IS NULL OR year <= 1987)
+            AND (year IS NULL OR (year >= 1979 AND year <= 1986))
             AND (price IS NULL OR price > 500)
             ORDER BY year DESC, date_updated DESC
             LIMIT ?
@@ -206,21 +204,21 @@ class Database:
 
         stats = {}
 
-        # Total active oldtimer ads (year <= 1987, price > 500, excluding search links)
+        # Total active ads (190/200 series 1979-1986, price > 500, excluding search links)
         cursor.execute("""
             SELECT COUNT(*) FROM advertisements
             WHERE is_active = 1 AND external_id NOT LIKE 'search_%'
-            AND (year IS NULL OR year <= 1987)
+            AND (year IS NULL OR (year >= 1979 AND year <= 1986))
             AND (price IS NULL OR price > 500)
         """)
         stats['total_active'] = cursor.fetchone()[0]
 
-        # Ads by country (oldtimers only, price > 500)
+        # Ads by country (190/200 series 1979-1986, price > 500)
         cursor.execute('''
             SELECT country, COUNT(*) as count
             FROM advertisements
             WHERE is_active = 1 AND external_id NOT LIKE 'search_%'
-            AND (year IS NULL OR year <= 1987)
+            AND (year IS NULL OR (year >= 1979 AND year <= 1986))
             AND (price IS NULL OR price > 500)
             GROUP BY country
         ''')

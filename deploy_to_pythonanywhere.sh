@@ -9,7 +9,7 @@ echo ""
 
 # Stap 1: Navigeer naar project directory
 echo "📁 Stap 1: Navigeren naar project directory..."
-cd ~/mercedes-finder || { echo "❌ Directory niet gevonden!"; exit 1; }
+cd ~/mercedes-diesel-finder || { echo "❌ Directory niet gevonden!"; exit 1; }
 echo "✅ In directory: $(pwd)"
 echo ""
 

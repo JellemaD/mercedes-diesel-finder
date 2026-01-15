@@ -27,20 +27,20 @@ Ga naar: **Consoles** → **Start new bash console**
 
 ### Stap 3: Backup Huidige Database
 ```bash
-cd ~/mercedes-finder
+cd ~/mercedes-diesel-finder
 cp mercedes_diesel.db mercedes_diesel.db.backup_$(date +%Y%m%d)
 ```
 
 ### Stap 4: Pull Nieuwe Code
 ```bash
-cd ~/mercedes-finder
+cd ~/mercedes-diesel-finder
 git fetch --all --tags
 git pull origin master
 ```
 
 ### Stap 5: Verwijder __pycache__
 ```bash
-cd ~/mercedes-finder
+cd ~/mercedes-diesel-finder
 find . -type d -name '__pycache__' -exec rm -rf {} +
 ```
 
@@ -61,7 +61,7 @@ Als je terug wilt naar de oude versie (1975-1996, W123/W124 only):
 
 ### Via Tag:
 ```bash
-cd ~/mercedes-finder
+cd ~/mercedes-diesel-finder
 git checkout v1.0-pythonanywhere-backup
 find . -type d -name '__pycache__' -exec rm -rf {} +
 ```
@@ -70,7 +70,7 @@ Dan **Reload Web App** in PythonAnywhere Web tab.
 
 ### Database Terugzetten:
 ```bash
-cd ~/mercedes-finder
+cd ~/mercedes-diesel-finder
 cp mercedes_diesel.db.backup_YYYYMMDD mercedes_diesel.db
 ```
 
@@ -80,7 +80,7 @@ cp mercedes_diesel.db.backup_YYYYMMDD mercedes_diesel.db
 
 ### Check Versie:
 ```bash
-cd ~/mercedes-finder
+cd ~/mercedes-diesel-finder
 git log --oneline -1
 python3 -c "import config; print(f'Year: {config.YEAR_FROM}-{config.YEAR_TO}, Models: {config.MODELS}')"
 ```
@@ -117,7 +117,7 @@ python3 -c "from database import Database; db = Database(); print(db.get_statist
 ## 🆘 Troubleshooting
 
 **Probleem:** Site toont oude data
-**Oplossing:** Run scraper handmatig: `python3 scraper_manager.py`
+**Oplossing:** Run scraper handmatig: `cd ~/mercedes-diesel-finder && python3 scraper_manager.py`
 
 **Probleem:** Import errors
 **Oplossing:** `find . -type d -name '__pycache__' -exec rm -rf {} +`
@@ -131,15 +131,15 @@ python3 -c "from database import Database; db = Database(); print(db.get_statist
 
 **Update naar nieuwe versie:**
 ```bash
-cd ~/mercedes-finder && git pull origin master && find . -type d -name '__pycache__' -exec rm -rf {} +
+cd ~/mercedes-diesel-finder && git pull origin master && find . -type d -name '__pycache__' -exec rm -rf {} +
 ```
 
 **Rollback naar oude versie:**
 ```bash
-cd ~/mercedes-finder && git checkout v1.0-pythonanywhere-backup && find . -type d -name '__pycache__' -exec rm -rf {} +
+cd ~/mercedes-diesel-finder && git checkout v1.0-pythonanywhere-backup && find . -type d -name '__pycache__' -exec rm -rf {} +
 ```
 
 **Terug naar master:**
 ```bash
-cd ~/mercedes-finder && git checkout master && find . -type d -name '__pycache__' -exec rm -rf {} +
+cd ~/mercedes-diesel-finder && git checkout master && find . -type d -name '__pycache__' -exec rm -rf {} +
 ```

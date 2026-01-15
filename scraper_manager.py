@@ -61,7 +61,7 @@ class ScraperManager:
 
         # Mark inactive ads
         if active_ids:
-            self.db.mark_inactive_ads(active_ids)
+            # self.db.mark_inactive_ads(active_ids)  # DISABLED: keep old ads
 
         print(f"\n{'='*60}")
         print(f"Scrape session completed")

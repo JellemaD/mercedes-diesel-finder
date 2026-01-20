@@ -39,6 +39,7 @@ def main():
         from scrape_extra_sources import (
             scrape_autoscout24_json,
             scrape_ebay_motors,
+            scrape_kleinanzeigen,
             scrape_gaspedaal,
             scrape_2dehands,
             scrape_autotrack,
@@ -89,12 +90,17 @@ def main():
         print(f"❌ Error: {e}")
 
     # ========================================================================
-    # Kleinanzeigen.de (via eBay scraper - same platform)
+    # Kleinanzeigen.de (formerly eBay Kleinanzeigen)
     # ========================================================================
     print("\n" + "="*60)
     print("KLEINANZEIGEN.DE")
     print("="*60)
-    print("(Scraped via eBay.de - same platform)")
+    try:
+        results = scrape_kleinanzeigen()
+        all_results.extend(results)
+        print(f"✅ Added {len(results)} ads from Kleinanzeigen.de")
+    except Exception as e:
+        print(f"❌ Error: {e}")
 
     # ========================================================================
     # Gaspedaal.nl

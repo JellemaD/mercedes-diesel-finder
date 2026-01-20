@@ -339,6 +339,26 @@ def scrape_ebay_motors():
                         # Year
                         year = extract_year(title)
 
+                        # Location - extract from item text
+                        location = 'Deutschland'
+                        try:
+                            item_text = item.text
+                            # Look for "Standort: CITY" pattern
+                            loc_match = re.search(r'Standort:\s*([^\n]+)', item_text)
+                            if loc_match:
+                                location = loc_match.group(1).strip()
+                            else:
+                                # Try to find location in SECONDARY_INFO spans
+                                loc_elems = item.find_elements(By.CSS_SELECTOR, 'span.SECONDARY_INFO')
+                                for le in loc_elems:
+                                    text = le.text.strip()
+                                    # German locations often have format "aus Stadt" or just "Stadt"
+                                    if text and len(text) > 2 and not any(x in text.lower() for x in ['versand', 'lieferung', 'eur', '€']):
+                                        location = text.replace('aus ', '').split(',')[0].strip()
+                                        break
+                        except:
+                            pass
+
                         # Model
                         model = 'W123/W124'
                         if 'w123' in title.lower() or '240d' in title.lower():
@@ -353,7 +373,7 @@ def scrape_ebay_motors():
                             'mileage': None,
                             'price': price,
                             'currency': 'EUR',
-                            'location': 'Deutschland',
+                            'location': location,
                             'country': 'DE',
                             'source': 'eBay.de',
                             'source_url': ad_url,
@@ -378,6 +398,165 @@ def scrape_ebay_motors():
         print(f"  Selenium error: {e}")
 
     print(f"\nTotal from eBay.de: {len(results)}")
+    return results
+
+
+def scrape_kleinanzeigen():
+    """Scrape Kleinanzeigen.de (formerly eBay Kleinanzeigen) using Selenium"""
+    print(f"\n{'='*50}")
+    print("SCRAPING KLEINANZEIGEN.DE (Selenium)")
+    print("="*50)
+
+    results = []
+
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.common.by import By
+    except ImportError:
+        print("  Selenium niet geinstalleerd, skip Kleinanzeigen.de")
+        return results
+
+    # Setup headless Chrome
+    options = Options()
+    options.add_argument('--headless=new')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+
+    try:
+        chrome_service = get_chrome_service()
+        driver = webdriver.Chrome(service=chrome_service, options=options) if chrome_service else webdriver.Chrome(options=options)
+        driver.set_page_load_timeout(30)
+
+        search_terms = ['mercedes+w123+diesel', 'mercedes+w124+diesel', 'mercedes+240d']
+
+        for term in search_terms:
+            url = f'https://www.kleinanzeigen.de/s-autos/c216?keywords={term}'
+            print(f"\nSearching: {term}")
+
+            try:
+                driver.get(url)
+                time.sleep(4)
+
+                # Find listing items - Kleinanzeigen uses article tags
+                items = driver.find_elements(By.CSS_SELECTOR, 'article.aditem')
+                if not items:
+                    items = driver.find_elements(By.CSS_SELECTOR, 'li[class*="ad-listitem"]')
+                print(f"  Found {len(items)} items")
+
+                for item in items[:20]:
+                    try:
+                        # Title
+                        title = ''
+                        for selector in ['a.ellipsis', 'h2', '[class*="title"]']:
+                            title_elems = item.find_elements(By.CSS_SELECTOR, selector)
+                            for t in title_elems:
+                                text = t.text.strip()
+                                if text and len(text) > 10:
+                                    title = text
+                                    break
+                            if title:
+                                break
+
+                        if not title:
+                            continue
+
+                        if not is_classic_diesel(title):
+                            continue
+
+                        # Link
+                        ad_url = ''
+                        link_elems = item.find_elements(By.TAG_NAME, 'a')
+                        for link in link_elems:
+                            href = link.get_attribute('href') or ''
+                            if 'kleinanzeigen.de/' in href and '/s-anzeige/' in href:
+                                ad_url = href
+                                break
+
+                        if not ad_url:
+                            continue
+
+                        # ID from URL
+                        id_match = re.search(r'/s-anzeige/[^/]+/(\d+)', ad_url)
+                        external_id = id_match.group(1) if id_match else str(hash(ad_url))[:10]
+
+                        # Price
+                        price = None
+                        for price_selector in ['[class*="price"]', 'p[class*="preis"]']:
+                            price_elems = item.find_elements(By.CSS_SELECTOR, price_selector)
+                            for pe in price_elems:
+                                text = pe.text.strip()
+                                if text and ('€' in text or re.search(r'\d', text)):
+                                    price = extract_price(text)
+                                    if price:
+                                        break
+                            if price:
+                                break
+
+                        # Year
+                        year = extract_year(title)
+
+                        # Location - Kleinanzeigen usually shows location
+                        location = 'Deutschland'
+                        try:
+                            item_text = item.text
+                            # Look for location patterns
+                            loc_match = re.search(r'(\d{5})\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)?)', item_text)
+                            if loc_match:
+                                location = loc_match.group(2).strip()  # City name
+                            else:
+                                # Try to find spans with location info
+                                loc_elems = item.find_elements(By.CSS_SELECTOR, '[class*="aditem-main--top--left"]')
+                                for le in loc_elems:
+                                    text = le.text.strip()
+                                    if text and len(text) > 2 and not any(x in text.lower() for x in ['eur', '€', 'heute', 'gestern']):
+                                        location = text.split('\n')[-1].strip()
+                                        break
+                        except:
+                            pass
+
+                        # Model
+                        model = 'W123/W124'
+                        if 'w123' in title.lower() or '240d' in title.lower():
+                            model = 'W123'
+                        elif 'w124' in title.lower():
+                            model = 'W124'
+
+                        ad = {
+                            'external_id': f'kleinanzeigen_{external_id}',
+                            'model': model,
+                            'year': year,
+                            'mileage': None,
+                            'price': price,
+                            'currency': 'EUR',
+                            'location': location,
+                            'country': 'DE',
+                            'source': 'Kleinanzeigen.de',
+                            'source_url': ad_url,
+                            'title': title,
+                            'description': '',
+                            'image_url': ''
+                        }
+
+                        if not any(r['external_id'] == ad['external_id'] for r in results):
+                            results.append(ad)
+                            print(f"  + {title[:45]}...")
+
+                    except Exception as e:
+                        continue
+
+            except Exception as e:
+                print(f"  Error: {e}")
+
+        driver.quit()
+
+    except Exception as e:
+        print(f"  Selenium error: {e}")
+
+    print(f"\nTotal from Kleinanzeigen.de: {len(results)}")
     return results
 
 
@@ -482,6 +661,24 @@ def scrape_gaspedaal():
                         # Year
                         year = extract_year(title)
 
+                        # Location - extract from listing text
+                        location = 'Nederland'
+                        try:
+                            # Look for Dutch postcode + city pattern (e.g. "1234 AB Amsterdam")
+                            loc_match = re.search(r'(\d{4}\s*[A-Z]{2})\s+([A-Z][a-zë]+(?:\s+[A-Z][a-zë]+)?)', full_text)
+                            if loc_match:
+                                location = loc_match.group(2).strip()
+                            else:
+                                # Look for location in separate elements
+                                loc_elems = listing.find_elements(By.CSS_SELECTOR, '[class*="location"], [class*="plaats"], [class*="city"]')
+                                for le in loc_elems:
+                                    text = le.text.strip()
+                                    if text and len(text) > 2 and not any(x in text.lower() for x in ['eur', '€', 'km']):
+                                        location = text.split(',')[0].strip()
+                                        break
+                        except:
+                            pass
+
                         # Model
                         model = 'W123/W124'
                         if 'w123' in title.lower() or '240d' in title.lower():
@@ -496,7 +693,7 @@ def scrape_gaspedaal():
                             'mileage': None,
                             'price': price,
                             'currency': 'EUR',
-                            'location': 'Nederland',
+                            'location': location,
                             'country': 'NL',
                             'source': 'Gaspedaal.nl',
                             'source_url': ad_url,
@@ -640,6 +837,24 @@ def scrape_2dehands():
                         # Year from title
                         year = extract_year(title)
 
+                        # Location - extract from listing text
+                        location = 'België'
+                        try:
+                            # Look for Belgian postcode + city pattern (e.g. "1000 Brussel")
+                            loc_match = re.search(r'(\d{4})\s+([A-Z][a-zë\-]+(?:\s+[A-Z][a-zë\-]+)?)', full_text)
+                            if loc_match:
+                                location = loc_match.group(2).strip()
+                            else:
+                                # Look for location in separate elements
+                                loc_elems = listing.find_elements(By.CSS_SELECTOR, '[class*="location"], [class*="plaats"], [class*="city"]')
+                                for le in loc_elems:
+                                    text = le.text.strip()
+                                    if text and len(text) > 2 and not any(x in text.lower() for x in ['eur', '€', 'km', 'vandaag', 'gisteren']):
+                                        location = text.split(',')[0].strip()
+                                        break
+                        except:
+                            pass
+
                         # Model
                         model = 'W123/W124'
                         if 'w123' in title.lower() or '240d' in title.lower():
@@ -654,7 +869,7 @@ def scrape_2dehands():
                             'mileage': None,
                             'price': price,
                             'currency': 'EUR',
-                            'location': 'België',
+                            'location': location,
                             'country': 'BE',
                             'source': '2dehands.be',
                             'source_url': ad_url,
@@ -1042,6 +1257,18 @@ def scrape_autowereld():
                             km_match = re.search(r'Kilometerstand\s*([\d.]+)\s*km', page_text)
                             if km_match:
                                 mileage = int(km_match.group(1).replace('.', ''))
+
+                            # Location: "Locatie: Amsterdam" or "Plaats: Rotterdam"
+                            location = 'Nederland'
+                            loc_match = re.search(r'(?:Locatie|Plaats)[:\s]+(.*?)(?:\n|$)', page_text)
+                            if loc_match:
+                                location = loc_match.group(1).strip()
+                                # Clean up location (remove extra info)
+                                location = re.split(r'\s+(?:Bekijk|Email|Plan|Telefoon)', location)[0].strip()
+                                # If multi-line location, take first line
+                                if '\n' in location:
+                                    city_line = location.split('\n')[0]
+                                    location = city_line.split()[0] if city_line else 'Nederland'
                         except:
                             pass
 
@@ -1062,7 +1289,7 @@ def scrape_autowereld():
                             'mileage': mileage,
                             'price': price,
                             'currency': 'EUR',
-                            'location': 'Nederland',
+                            'location': location,
                             'country': 'NL',
                             'source': 'AutoWereld.nl',
                             'source_url': ad_url,

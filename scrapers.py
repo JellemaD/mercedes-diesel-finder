@@ -11,9 +11,6 @@ class BaseScraper:
         self.session = requests.Session()
         self.results = []
 
-        # Set persistent cookies and better headers to avoid bot detection
-        self.session.cookies.set('consent', 'true', domain='.marktplaats.nl')
-
     def get_headers(self):
         return {
             'User-Agent': self.ua.random,
@@ -21,11 +18,6 @@ class BaseScraper:
             'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Cache-Control': 'max-age=0',
         }
 
     def extract_price(self, price_text):
@@ -47,12 +39,7 @@ class BaseScraper:
         # Remove km and thousands separators
         mileage_clean = re.sub(r'[^\d]', '', mileage_text)
         try:
-            mileage = int(mileage_clean)
-            # SQLite INTEGER max is 2^63-1, but realistic mileage is < 1,000,000 km
-            # Filter out unrealistic values (likely parsing errors)
-            if mileage > 2000000:  # 2 million km is unrealistic
-                return None
-            return mileage
+            return int(mileage_clean)
         except:
             return None
 
@@ -92,8 +79,6 @@ class AutoScout24Scraper(BaseScraper):
             params['model'] = '200-serie'
         elif 'W124' in model:
             params['model'] = '200-serie'
-        elif 'W201' in model:
-            params['model'] = '190-serie'
 
         query_string = '&'.join([f'{k}={v}' for k, v in params.items()])
         return f'{self.base_url}/lst?{query_string}'
@@ -202,6 +187,7 @@ class MobileDeScraper(BaseScraper):
         """Build search URL for Mobile.de"""
         params = {
             'makeModelVariant1.makeId': '17200',  # Mercedes-Benz
+            'makeModelVariant1.modelId': '4',  # 200-serie
             'cn': 'DE',
             'fuels': 'DIESEL',
             'yearFrom': year_from,
@@ -209,12 +195,6 @@ class MobileDeScraper(BaseScraper):
             'sortOption.sortBy': 'creationTime',
             'sortOption.sortOrder': 'DESCENDING'
         }
-
-        # Add model-specific parameters
-        if 'W201' in model:
-            params['makeModelVariant1.modelId'] = '3'  # 190-serie
-        else:
-            params['makeModelVariant1.modelId'] = '4'  # 200-serie (W123/W124)
 
         query_string = '&'.join([f'{k}={v}' for k, v in params.items()])
         return f'{self.base_url}/nl-NL/listing/search?{query_string}'
@@ -319,100 +299,45 @@ class MarktplaatsScraper(BaseScraper):
         self.base_url = 'https://www.marktplaats.nl'
         self.country = 'NL'
 
-    def build_search_url(self, search_term, offset=0):
-        """Build search URL for Marktplaats with pagination support"""
-        base = f'{self.base_url}/l/auto-s/q/{search_term.replace(" ", "+")}'
-        if offset > 0:
-            base += f'?offset={offset}'
-        return base
+    def build_search_url(self, model):
+        """Build search URL for Marktplaats"""
+        search_term = f'Mercedes {model} diesel'
+        return f'{self.base_url}/l/auto-s/q/{search_term.replace(" ", "+")}'
 
     def scrape(self, model):
-        """Scrape Marktplaats for specific model and all its variants"""
-        # Get all variants for this model from config
-        variants = config.MODEL_VARIANTS.get(model, [])
+        """Scrape Marktplaats for specific model"""
+        url = self.build_search_url(model)
 
-        # Build list of search terms
-        # Use broader terms and year-based searches to catch more ads
-        search_terms = [
-            f'Mercedes {model} diesel',  # Original search
-            f'Mercedes {model}',         # Without 'diesel' keyword
-        ]
+        try:
+            response = self.session.get(url, headers=self.get_headers(), timeout=config.REQUEST_TIMEOUT)
+            response.raise_for_status()
 
-        # Add searches for each specific variant (200D, 240D, 300D, etc.)
-        for variant in variants:
-            # Clean variant name (remove "Turbo", "Kombi" suffixes for search)
-            variant_clean = variant.replace(' Turbo', '').replace(' Kombi', '')
-            search_terms.append(f'Mercedes {variant_clean}')
+            soup = BeautifulSoup(response.content, 'html.parser')
 
-            # Also add space variant (e.g., "300 D" instead of "300D")
-            if variant_clean[-1].isalpha() and variant_clean[-2].isdigit():
-                spaced = variant_clean[:-1] + ' ' + variant_clean[-1]
-                search_terms.append(f'Mercedes {spaced}')
+            # Find all listings
+            listings = soup.find_all('li', class_=lambda x: x and 'mp-Listing' in str(x))
 
-        # Add year-based searches for years in config range (1979-1986)
-        if model == 'W123':
-            search_terms.extend(['Mercedes 1979 diesel', 'Mercedes 1980 diesel', 'Mercedes 1985 diesel'])
-        elif model == 'W124':
-            search_terms.extend(['Mercedes 1985 diesel', 'Mercedes 1986 diesel'])
-        elif model == 'W201':  # 190-serie
-            search_terms.extend(['Mercedes 190 diesel', 'Mercedes 1984 diesel', 'Mercedes 1985 diesel', 'Mercedes 1986 diesel'])
+            for listing in listings:
+                try:
+                    ad_data = self.parse_listing(listing, model)
+                    if ad_data:
+                        self.results.append(ad_data)
+                except Exception as e:
+                    print(f"Error parsing listing: {e}")
+                    continue
 
-        print(f"Marktplaats: Searching for {model} with {len(search_terms)} search terms")
+            time.sleep(config.REQUEST_DELAY)
 
-        # Track unique external_ids to avoid duplicates
-        seen_ids = set()
+        except Exception as e:
+            print(f"Error scraping Marktplaats: {e}")
 
-        for search_term in search_terms:
-            url = self.build_search_url(search_term, offset=0)
-            print(f"  - Searching: {search_term}")
-
-            try:
-                response = self.session.get(url, headers=self.get_headers(), timeout=config.REQUEST_TIMEOUT)
-                response.raise_for_status()
-
-                soup = BeautifulSoup(response.content, 'html.parser')
-
-                # Find all listings using updated Marktplaats structure
-                # Marktplaats uses hz-Listing-container now (as of 2026)
-                listings = soup.find_all('div', class_=lambda x: x and 'hz-Listing-container' in str(x))
-
-                # Fallback: if no listings found, try finding by ad links directly
-                if not listings:
-                    listings = soup.find_all('a', href=lambda x: x and '/v/auto-s/mercedes-benz/' in str(x))
-
-                print(f"    Found {len(listings)} listings")
-
-                for listing in listings:
-                    try:
-                        ad_data = self.parse_listing(listing, model)
-                        if ad_data and ad_data['external_id'] not in seen_ids:
-                            seen_ids.add(ad_data['external_id'])
-                            self.results.append(ad_data)
-                    except Exception as e:
-                        print(f"Error parsing listing: {e}")
-                        continue
-
-                time.sleep(config.REQUEST_DELAY)
-
-            except Exception as e:
-                print(f"Error scraping Marktplaats for '{search_term}': {e}")
-                continue
-
-        print(f"Marktplaats: Total unique results for {model}: {len(self.results)}")
         return self.results
 
     def parse_listing(self, listing, model):
-        """Parse individual Marktplaats listing (updated for 2026 HTML structure)"""
+        """Parse individual Marktplaats listing"""
         try:
-            # Check if listing is the container or the link itself
-            if listing.name == 'a':
-                link_elem = listing
-            else:
-                # Extract link from container
-                link_elem = listing.find('a', href=True, class_=lambda x: x and 'hz-Listing-coverLink' in str(x))
-                if not link_elem:
-                    link_elem = listing.find('a', href=True)
-
+            # Extract link
+            link_elem = listing.find('a', href=True)
             if not link_elem:
                 return None
 
@@ -420,32 +345,20 @@ class MarktplaatsScraper(BaseScraper):
             if not url.startswith('http'):
                 url = self.base_url + url
 
-            # Extract ID from URL (format: /v/auto-s/mercedes-benz/m1234567890-title)
-            external_id = re.search(r'/(m\d+)', url)
-            external_id = external_id.group(1) if external_id else url.split('/')[-1]
+            # Extract ID
+            external_id = re.search(r'/(\d+)\.', url)
+            external_id = external_id.group(1) if external_id else url
 
-            # Extract title - try multiple selectors for new structure
-            title_elem = (
-                listing.find('h3', class_=lambda x: x and 'hz-Listing-title' in str(x)) or
-                listing.find('span', class_=lambda x: x and 'title' in str(x).lower()) or
-                listing.find('h3') or
-                link_elem
-            )
+            # Extract title
+            title_elem = listing.find('h3', class_=lambda x: x and 'mp-Listing-title' in str(x))
             title = title_elem.get_text(strip=True) if title_elem else ''
 
-            # Extract price - updated for hz-Listing structure
-            price_elem = (
-                listing.find('div', class_=lambda x: x and 'hz-Listing-price-extended-details' in str(x)) or
-                listing.find('p', class_=lambda x: x and 'hz-Listing-price' in str(x)) or
-                listing.find('span', class_=lambda x: x and 'price' in str(x).lower())
-            )
+            # Extract price
+            price_elem = listing.find('span', class_=lambda x: x and 'mp-Listing-price' in str(x))
             price = self.extract_price(price_elem.get_text() if price_elem else '')
 
-            # Extract description - updated for hz-Listing structure
-            desc_elem = (
-                listing.find('p', class_=lambda x: x and 'hz-Listing-description' in str(x)) or
-                listing.find('div', class_=lambda x: x and 'description' in str(x).lower())
-            )
+            # Extract description for details
+            desc_elem = listing.find('p', class_=lambda x: x and 'mp-Listing-description' in str(x))
             description = desc_elem.get_text(strip=True) if desc_elem else ''
 
             # Try to extract year and mileage from description or title
@@ -453,11 +366,8 @@ class MarktplaatsScraper(BaseScraper):
             year = self.extract_year(combined_text)
             mileage = self.extract_mileage(combined_text)
 
-            # Extract location - updated for hz-Listing structure
-            location_elem = (
-                listing.find('span', class_=lambda x: x and 'hz-Listing-location' in str(x)) or
-                listing.find('span', class_=lambda x: x and 'location' in str(x).lower())
-            )
+            # Extract location
+            location_elem = listing.find('span', class_=lambda x: x and 'location' in str(x).lower())
             location = location_elem.get_text(strip=True) if location_elem else ''
 
             # Extract image
@@ -465,7 +375,7 @@ class MarktplaatsScraper(BaseScraper):
             image_url = img_elem.get('src', '') if img_elem else ''
 
             return {
-                'external_id': f'mp_nl_{external_id}',
+                'external_id': f'marktplaats_nl_{external_id}',
                 'model': model,
                 'year': year,
                 'mileage': mileage,

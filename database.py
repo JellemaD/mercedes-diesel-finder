@@ -118,7 +118,7 @@ class Database:
         conn.close()
         return results
 
-    def get_top_listings(self, limit=100):
+    def get_top_listings(self, limit=500):
         """Get top listings sorted by date and relevance"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -142,7 +142,7 @@ class Database:
         conn.close()
         return results
 
-    def get_country_top_listings(self, country, limit=50):
+    def get_country_top_listings(self, country, limit=100):
         """Get top listings for a specific country"""
         conn = self.get_connection()
         cursor = conn.cursor()
